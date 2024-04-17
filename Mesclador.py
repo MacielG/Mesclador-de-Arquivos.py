@@ -1,67 +1,77 @@
-import os
 import tkinter as tk
-from tkinter import filedialog
-import pyperclip  # Importar a biblioteca pyperclip para manipular a área de transferência
+from tkinter import ttk, filedialog, messagebox
+import os
+import pyperclip
 
-def merge_files(folder_path, output_folder):
-    # Criar a pasta de saída se não existir
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
-
+def merge_files(selected_files):
     merged_content = ""
+    try:
+        for file_path in selected_files:
+            with open(file_path, 'r') as file:
+                merged_content += file.read() + "\n"
+        pyperclip.copy(merged_content)
+        messagebox.showinfo("Sucesso", "Conteúdo mesclado e copiado para a área de transferência!")
+    except Exception as e:
+        messagebox.showerror("Erro", str(e))
 
-    # Percorrer recursivamente todas as pastas e arquivos
-    for root_folder, subfolders, files in os.walk(folder_path):
-        for file_name in files:
-            file_path = os.path.join(root_folder, file_name)
-            # Verificar se é um arquivo com extensão .py, .html, .css ou .js
-            if file_path.endswith('.py') or file_path.endswith('.html') or file_path.endswith('.css') or file_path.endswith('.js'):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    # Adicionar o nome do arquivo como prefixo
-                    merged_content += f"== {file_name} ==\n\n"
-                    # Adicionar conteúdo do arquivo
-                    merged_content += content
-                    # Adicionar espaço em branco entre os arquivos
-                    merged_content += "\n\n"
-
-    # Criar o nome do arquivo mesclado
-    output_file_name = "merged_file.txt"
-    output_file_path = os.path.join(output_folder, output_file_name)
-    # Escrever o conteúdo mesclado no arquivo de saída
-    with open(output_file_path, 'w', encoding='utf-8') as merged_file:
-        merged_file.write(merged_content)
-
-    # Copiar o conteúdo mesclado para a área de transferência
-    pyperclip.copy(merged_content)
-
-    print("Arquivos foram mesclados com sucesso e copiados para a área de transferência.")
-    # Atualizar a mensagem na interface gráfica
-    status_label.config(text="Conteúdo copiado para a área de transferência", fg="red")
-
-def select_folder():
+def select_files():
     folder_path = filedialog.askdirectory()
-    if folder_path:
-        merge_files(folder_path, output_folder_entry.get())
+    if not folder_path:
+        return
 
-# Criar a janela principal
-root = tk.Tk()
-root.title("Mesclar Arquivos")
+    root = tk.Toplevel()
+    root.title('Selecionar Arquivos para Mesclar')
 
-# Criar e posicionar elementos na janela
-select_folder_button = tk.Button(root, text="Selecionar Pasta", command=select_folder)
-select_folder_button.pack(pady=10)
+    tree = ttk.Treeview(root, selectmode='extended')
+    ysb = ttk.Scrollbar(root, orient='vertical', command=tree.yview)
+    xsb = ttk.Scrollbar(root, orient='horizontal', command=tree.xview)
+    tree.configure(yscroll=ysb.set, xscroll=xsb.set)
+    tree.heading('#0', text='Arquivos', anchor='w')
 
-output_folder_label = tk.Label(root, text="Digite o nome da pasta de saída:")
-output_folder_label.pack()
+    def insert_files(path, parent=''):
+        for p in sorted(os.listdir(path)):
+            abspath = os.path.join(path, p)
+            isdir = os.path.isdir(abspath)
+            oid = tree.insert(parent, 'end', text=p, open=False)
+            if isdir:
+                insert_files(abspath, oid)
 
-output_folder_entry = tk.Entry(root, width=50)
-output_folder_entry.insert(0, os.path.join(os.path.expanduser('~'), 'Desktop', 'Arquivos_Mesclados'))
-output_folder_entry.pack(pady=5)
+    insert_files(folder_path)
+    tree.pack(fill='both', expand=True)
+    ysb.pack(fill='y', side='right')
+    xsb.pack(fill='x', side='bottom')
 
-# Label para exibir o status da operação
-status_label = tk.Label(root, text="", fg="red")
-status_label.pack()
+    def on_merge_selected():
+        selected_files = [
+            os.path.join(folder_path, tree.item(item)["text"]) for item in tree.selection()
+            if not os.path.isdir(os.path.join(folder_path, tree.item(item)["text"]))
+        ]
+        merge_files(selected_files)
+        root.destroy()
 
-# Iniciar o loop da interface gráfica
-root.mainloop()
+    def toggle_item_selection(event):
+        item = tree.identify('item', event.x, event.y)
+        if tree.tag_has('selected', item):
+            tree.item(item, tags=())
+            tree.selection_remove(item)
+        else:
+            tree.item(item, tags=('selected',))
+            tree.selection_add(item)
+            tree.tag_configure('selected', background='yellow')
+
+    tree.bind('<1>', toggle_item_selection)
+
+    merge_btn = ttk.Button(root, text="Mesclar Selecionados", command=on_merge_selected)
+    merge_btn.pack(fill='x', expand=True)
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    app = tk.Tk()
+    app.title("Mesclador de Arquivos")
+    app.geometry("300x250")
+
+    open_btn = ttk.Button(app, text="Selecionar Pasta", command=select_files)
+    open_btn.pack(expand=True)
+
+    app.mainloop()
